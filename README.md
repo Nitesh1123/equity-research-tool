@@ -1,6 +1,4 @@
-# AI Equity Research Assistant
-
-# EquityBot :- News Research Tool
+# EquityBot: AI Equity Research Tool
 
 EquityBot is a user-friendly news research tool designed for effortless information retrieval. Users can input article URLs and ask questions to receive relevant insights from the stock market and financial domain powered by **Google Gemini**.
 
@@ -13,8 +11,9 @@ EquityBot is a user-friendly news research tool designed for effortless informat
 
 - Load URLs to fetch article content.
 - Process article content through LangChain's document loaders.
-- Construct embedding vectors using **Google's `text-embedding-004`** and leverage **FAISS** to enable swift similarity search and retrieval.
-- Interact with **Google Gemini (`gemini-1.5-flash`)** to query articles and receive grounded answers along with source URLs.
+- Construct embedding vectors using **Google's `gemini-embedding-001`** and leverage **FAISS** to enable swift similarity search and retrieval.
+- Interact with **Google Gemini (`gemini-2.5-flash`)** to query articles and receive grounded answers along with source URLs.
+- Each browser session gets its own in-memory index, so multiple users of the hosted app never see each other's articles.
 
 ## Installation
 
@@ -30,7 +29,7 @@ git clone https://github.com/Nitesh1123/equity-research-tool.git
 cd equity-research-tool
 ```
 
-3. Install the required dependencies:
+3. Install the required dependencies (Python 3.10+):
 
 ```bash
 pip install -r requirements.txt
@@ -51,12 +50,11 @@ streamlit run main.py
 
 2. The web app will open in your browser:
 - On the sidebar, input news article URLs.
-- Click **"Process URLs"** to parse, split, and embed the text into a local FAISS index.
+- Click **"Process URLs"** to parse, split, and embed the text into an in-memory FAISS index for your session.
 - Ask questions in the search box to receive answers with source citations.
 
 ## Project Structure
 
 - `main.py`: The main Streamlit application script.
 - `requirements.txt`: Python package dependencies.
-- `faiss_store_gemini/`: Local directory storing the FAISS vector index.
 - `.env`: Local configuration file storing your `GOOGLE_API_KEY`.
