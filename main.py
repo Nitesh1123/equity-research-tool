@@ -23,6 +23,17 @@ EMBEDDING_MODEL = "models/gemini-embedding-001"
 NUM_URLS = 3
 EMBED_BATCH_SIZE = 50
 MAX_EMBED_RETRIES = 5
+RETRIEVER_K = 4  # chunks per sub-question
+RETRIEVER_FETCH_K = 20
+MAX_SUB_QUESTIONS = 4
+
+DECOMPOSE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system",
+     "Split the user's question into the separate, self-contained sub-questions it asks, "
+     "one per line, with no numbering or extra text. If it asks only one thing, return "
+     "it unchanged on a single line."),
+    ("human", "{question}"),
+])
 
 PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -86,6 +97,27 @@ def build_vectorstore(docs, embeddings, status):
                                 f"({start}/{len(docs)} chunks)")
                     time.sleep(1)
     return store
+
+
+def retrieve(vectorstore, question):
+    # A compound question ("who founded X, and who owns Y?") embeds close to only one
+    # of its topics, so retrieve for each sub-question separately and merge the results
+    decompose = DECOMPOSE_PROMPT | get_llm() | StrOutputParser()
+    sub_questions = [q.strip() for q in decompose.invoke({"question": question}).splitlines() if q.strip()]
+    sub_questions = sub_questions[:MAX_SUB_QUESTIONS] or [question]
+
+    # MMR keeps the chunks for each sub-question from being near-duplicates
+    retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={"k": RETRIEVER_K, "fetch_k": RETRIEVER_FETCH_K, "lambda_mult": 0.5},
+    )
+    seen, docs = set(), []
+    for sub_question in sub_questions:
+        for doc in retriever.invoke(sub_question):
+            if doc.page_content not in seen:
+                seen.add(doc.page_content)
+                docs.append(doc)
+    return sub_questions, docs
 
 
 def format_docs(docs):
@@ -190,7 +222,7 @@ if query:
 
     with st.spinner("Generating answer..."):
         try:
-            source_docs = vectorstore.as_retriever().invoke(query)
+            sub_questions, source_docs = retrieve(vectorstore, query)
             chain = PROMPT | get_llm() | StrOutputParser()
             answer = chain.invoke({"context": format_docs(source_docs), "question": query})
         except Exception as e:
@@ -206,3 +238,10 @@ if query:
         st.subheader("Sources:")
         for source in sources:
             st.write(source)
+
+    with st.expander(f"Retrieved passages ({len(source_docs)})"):
+        if len(sub_questions) > 1:
+            st.caption("Searched for: " + " · ".join(sub_questions))
+        for i, doc in enumerate(source_docs, 1):
+            st.markdown(f"**{i}. {doc.metadata.get('source', 'unknown')}**")
+            st.text(doc.page_content)

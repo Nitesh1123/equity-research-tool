@@ -13,6 +13,7 @@ EquityBot is a user-friendly news research tool designed for effortless informat
 - Process article content through LangChain's document loaders.
 - Construct embedding vectors using **Google's `gemini-embedding-001`** and leverage **FAISS** to enable swift similarity search and retrieval.
 - Interact with **Google Gemini (`gemini-2.5-flash`)** to query articles and receive grounded answers along with source URLs.
+- Compound questions spanning several articles are split into sub-questions, each retrieved separately, and the passages behind every answer can be inspected in the app.
 - Each browser session gets its own in-memory index, so multiple users of the hosted app never see each other's articles.
 
 ## Installation
