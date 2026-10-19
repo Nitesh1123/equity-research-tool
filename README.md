@@ -14,6 +14,7 @@ EquityBot is a user-friendly news research tool designed for effortless informat
 - Construct embedding vectors using **Google's `gemini-embedding-001`** and leverage **FAISS** to enable swift similarity search and retrieval.
 - Interact with **Google Gemini (`gemini-2.5-flash`)** to query articles and receive grounded answers along with source URLs.
 - Compound questions spanning several articles are split into sub-questions, each retrieved separately, and the passages behind every answer can be inspected in the app.
+- Chat interface with memory: ask follow-ups like "what about its revenue?" and answers stream in as they're written.
 - Each browser session gets its own in-memory index, so multiple users of the hosted app never see each other's articles.
 
 ## Installation
@@ -52,7 +53,7 @@ streamlit run main.py
 2. The web app will open in your browser:
 - On the sidebar, input news article URLs.
 - Click **"Process URLs"** to parse, split, and embed the text into an in-memory FAISS index for your session.
-- Ask questions in the search box to receive answers with source citations.
+- Chat with the articles in the box at the bottom; each answer lists its sources and the passages it used. Use **Clear chat** in the sidebar to start over.
 
 ## Project Structure
 
