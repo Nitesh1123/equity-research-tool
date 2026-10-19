@@ -19,7 +19,7 @@ A research assistant for listed companies. Enter a ticker and EquityBot pulls li
 
 1. Market data from `yfinance` is written into a short text document; news and URL articles are loaded with LangChain's `WebBaseLoader`.
 2. Everything is split into ~1,000-character chunks and embedded with Google's `gemini-embedding-001` into an in-memory FAISS index. Embedding runs in batches and waits out Gemini free-tier rate limits.
-3. For each question, Gemini rewrites it into standalone sub-questions, MMR search retrieves passages for each, and `gemini-2.5-flash` writes a streamed answer using only those passages.
+3. For each question, Gemini rewrites it into standalone sub-questions, similarity search retrieves passages for each, and `gemini-2.5-flash` writes a streamed answer using only those passages.
 
 Each browser session has its own index, so users of the hosted app never see each other's research.
 
@@ -51,9 +51,22 @@ Then start the app:
 streamlit run main.py
 ```
 
+## Tests
+
+The tests drive the full app with Streamlit's `AppTest`, using fakes for Gemini, Yahoo Finance and web loading, so they run offline without an API key.
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+```bash
+pytest
+```
+
 ## Project structure
 
 - `main.py`: the Streamlit app.
+- `tests/test_app.py`: end-to-end tests.
 - `.streamlit/config.toml`: theme and toolbar settings.
-- `requirements.txt`: Python dependencies.
+- `requirements.txt`: app dependencies; `requirements-dev.txt` adds pytest.
 - `.env`: your `GOOGLE_API_KEY` (not committed).

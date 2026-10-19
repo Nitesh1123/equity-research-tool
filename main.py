@@ -29,7 +29,6 @@ NUM_NEWS_ARTICLES = 3  # kept small: every chunk costs a free-tier embedding req
 EMBED_BATCH_SIZE = 50
 MAX_EMBED_RETRIES = 5
 RETRIEVER_K = 4  # chunks per sub-question
-RETRIEVER_FETCH_K = 20
 MAX_SUB_QUESTIONS = 4
 HISTORY_TURNS = 3  # previous question/answer pairs given to the model
 AVATARS = {"user": ":material/person:", "assistant": ":material/query_stats:"}
@@ -237,11 +236,7 @@ def retrieve(vectorstore, question, history):
     sub_questions = [q.strip() for q in rewritten.splitlines() if q.strip()]
     sub_questions = sub_questions[:MAX_SUB_QUESTIONS] or [question]
 
-    # MMR keeps the chunks for each sub-question from being near-duplicates
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": RETRIEVER_K, "fetch_k": RETRIEVER_FETCH_K, "lambda_mult": 0.5},
-    )
+    retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVER_K})
     seen, docs = set(), []
     for sub_question in sub_questions:
         for doc in retriever.invoke(sub_question):
@@ -280,7 +275,7 @@ def render_snapshot(snap):
 
     prices = snap["history"].rename_axis("Date").reset_index()
     chart = alt.Chart(prices).mark_line(color=ACCENT, strokeWidth=1.5).encode(
-        x=alt.X("Date:T", title=None),
+        x=alt.X("Date:T", title=None, axis=alt.Axis(format="%b", tickCount="month")),
         # Not anchored at zero, otherwise a six-month move looks like a flat line
         y=alt.Y("Close:Q", title=snap["currency"] or None, scale=alt.Scale(zero=False)),
         tooltip=[alt.Tooltip("Date:T", format="%d %b %Y"), alt.Tooltip("Close:Q", format=",.2f")],
@@ -327,16 +322,16 @@ st.session_state.setdefault("messages", [])
 
 with st.sidebar:
     st.header("Research set")
-    ticker = st.text_input("Ticker", placeholder="NVDA, AAPL, RELIANCE.NS",
+    ticker = st.text_input("Ticker", key="ticker", placeholder="NVDA, AAPL, RELIANCE.NS",
                            help="Any symbol on Yahoo Finance. Adds live market data to the research set.")
-    include_news = st.toggle("Add latest news for this ticker", value=True,
+    include_news = st.toggle("Add latest news for this ticker", value=True, key="include_news",
                              help=f"Pulls the {NUM_NEWS_ARTICLES} most relevant recent articles from Yahoo Finance.")
     st.markdown("**Article URLs**")
-    urls = [st.text_input(f"URL {i+1}", placeholder="https://", label_visibility="collapsed")
+    urls = [st.text_input(f"URL {i+1}", key=f"url_{i+1}", placeholder="https://", label_visibility="collapsed")
             for i in range(NUM_URLS)]
-    build_clicked = st.button("Build research set", type="primary", use_container_width=True)
+    build_clicked = st.button("Build research set", key="build", type="primary", use_container_width=True)
 
-    if st.session_state["messages"] and st.button("Clear chat", use_container_width=True):
+    if st.session_state["messages"] and st.button("Clear chat", key="clear_chat", use_container_width=True):
         st.session_state["messages"] = []
 
 # ======================
@@ -454,8 +449,8 @@ if vectorstore is not None and not st.session_state["messages"] and not query:
     suggestions_box = st.empty()
     with suggestions_box.container():
         st.caption("Try asking")
-        for column, suggestion in zip(st.columns(3), suggested_questions(snapshot)):
-            if column.button(suggestion, use_container_width=True):
+        for i, (column, suggestion) in enumerate(zip(st.columns(3), suggested_questions(snapshot))):
+            if column.button(suggestion, key=f"suggestion_{i}", use_container_width=True):
                 query = suggestion
     if query:
         suggestions_box.empty()
