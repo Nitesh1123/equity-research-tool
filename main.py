@@ -33,11 +33,12 @@ MAX_SUB_QUESTIONS = 4
 HISTORY_TURNS = 3  # previous question/answer pairs given to the model
 AVATARS = {"user": ":material/person:", "assistant": ":material/query_stats:"}
 
-ACCENT = "#3FB68B"  # keep in sync with primaryColor in .streamlit/config.toml
+EXAMPLE_TICKERS = ["NVDA", "AAPL", "MSFT"]
+REPO_URL = "https://github.com/Nitesh1123/equity-research-tool"
+ACCENT = "#1D4E89"  # keep in sync with primaryColor in .streamlit/config.toml
 
-st.set_page_config(page_title="EquityBot", page_icon=":material/query_stats:")
-# Streamlit's default metric font truncates values in four narrow columns
-st.markdown("<style>[data-testid='stMetricValue'] {font-size: 1.5rem;}</style>", unsafe_allow_html=True)
+st.set_page_config(page_title="EquityBot", page_icon=":material/query_stats:",
+                   menu_items={"About": f"EquityBot: research a listed company with cited answers. {REPO_URL}"})
 
 DECOMPOSE_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -210,7 +211,7 @@ def build_vectorstore(docs, embeddings, status):
                 match = re.search(r"retry in ([\d.]+)s", str(e))
                 wait = math.ceil(float(match.group(1))) + 1 if match else 60
                 for remaining in range(wait, 0, -1):
-                    status.text(f"Embedding {start}/{len(docs)} chunks · Gemini rate limit, "
+                    status.text(f"Embedding {start}/{len(docs)} chunks. Gemini rate limit reached, "
                                 f"resuming in {remaining}s")
                     time.sleep(1)
     status.empty()
@@ -257,30 +258,38 @@ def format_docs(docs):
 # RENDERING
 # ======================
 def render_snapshot(snap):
-    st.subheader(f"{snap['name']} · {snap['ticker']}")
-    if snap["sector"]:
-        st.caption(f"{snap['sector']} · {snap['industry']}")
-
     change = None
     if snap["previous_close"]:
         change = (snap["price"] / snap["previous_close"] - 1) * 100
 
-    price_col, cap_col, pe_col, range_col = st.columns(4)
-    price_col.metric(f"Price ({snap['currency']})" if snap["currency"] else "Price", f"{snap['price']:,.2f}",
-                     f"{change:+.2f}%" if change is not None else None)
+    name_col, price_col = st.columns([3, 2], vertical_alignment="bottom")
+    name_col.header(snap["name"], anchor=False)
+    name_col.caption(", ".join(p for p in (snap["ticker"], snap["sector"], snap["industry"]) if p))
+    price_col.title(f"{snap['price']:,.2f}", anchor=False)
+    if change is not None:
+        colour = "green" if change >= 0 else "red"
+        price_col.caption(f"{snap['currency']}, :{colour}[{change:+.2f}%] on the day")
+    else:
+        price_col.caption(snap["currency"])
+
+    cap_col, pe_col, fwd_col, range_col = st.columns(4)
     cap_col.metric("Market cap", format_big(snap["market_cap"]))
     pe_col.metric("P/E (TTM)", format_ratio(snap["trailing_pe"]))
+    fwd_col.metric("Forward P/E", format_ratio(snap["forward_pe"]))
     if snap["year_low"] and snap["year_high"]:
         range_col.metric("52-week range", f"{snap['year_low']:,.0f}–{snap['year_high']:,.0f}")
 
     prices = snap["history"].rename_axis("Date").reset_index()
     chart = alt.Chart(prices).mark_line(color=ACCENT, strokeWidth=1.5).encode(
-        x=alt.X("Date:T", title=None, axis=alt.Axis(format="%b", tickCount="month")),
+        x=alt.X("Date:T", title=None, axis=alt.Axis(format="%b", tickCount="month", grid=False)),
         # Not anchored at zero, otherwise a six-month move looks like a flat line
-        y=alt.Y("Close:Q", title=snap["currency"] or None, scale=alt.Scale(zero=False)),
+        y=alt.Y("Close:Q", title=None, scale=alt.Scale(zero=False)),
         tooltip=[alt.Tooltip("Date:T", format="%d %b %Y"), alt.Tooltip("Close:Q", format=",.2f")],
-    ).properties(height=220)
-    st.altair_chart(chart, use_container_width=True)
+    ).properties(height=200).configure_view(strokeWidth=0).configure_axis(
+        labelFont="IBM Plex Sans", labelColor="#5B6575", labelFontSize=11, domain=False, ticks=False,
+    )
+    st.altair_chart(chart, width="stretch")
+    st.caption("Six months of daily closes from Yahoo Finance.")
 
 
 def source_label(source, limit=60):
@@ -294,11 +303,11 @@ def source_link(source):
 
 def render_references(message):
     if message["sources"]:
-        st.caption("Sources: " + " · ".join(source_link(s) for s in message["sources"]))
+        st.caption("Sources: " + "; ".join(source_link(s) for s in message["sources"]))
 
     with st.expander(f"Passages used ({len(message['passages'])})"):
         if len(message["sub_questions"]) > 1:
-            st.caption("Searched for: " + " · ".join(message["sub_questions"]))
+            st.caption("Searched for: " + "; ".join(message["sub_questions"]))
         for i, (source, text) in enumerate(message["passages"], 1):
             st.markdown(f"**{i}.** {source_link(source)}")
             st.text(text)
@@ -315,31 +324,64 @@ def suggested_questions(snap):
             "What figures or guidance do the articles give?"]
 
 
+def request_example(ticker):
+    # Runs before the rerun, so the ticker box shows the example when the build starts
+    st.session_state["ticker"] = ticker
+    st.session_state["build_requested"] = True
+
+
 # ======================
-# SIDEBAR
+# ABOUT (sidebar)
 # ======================
 st.session_state.setdefault("messages", [])
 
 with st.sidebar:
-    st.header("Research set")
-    ticker = st.text_input("Ticker", key="ticker", placeholder="NVDA, AAPL, RELIANCE.NS",
-                           help="Any symbol on Yahoo Finance. Adds live market data to the research set.")
-    include_news = st.toggle("Add latest news for this ticker", value=True, key="include_news",
-                             help=f"Pulls the {NUM_NEWS_ARTICLES} most relevant recent articles from Yahoo Finance.")
-    st.markdown("**Article URLs**")
-    urls = [st.text_input(f"URL {i+1}", key=f"url_{i+1}", placeholder="https://", label_visibility="collapsed")
+    st.subheader("About this project", anchor=False)
+    st.markdown("EquityBot answers questions about a listed company from live market data and "
+                "recent news, and shows the passages behind every answer.")
+    st.markdown("**How it works**")
+    st.markdown(
+        "1. Fetches market data and the latest news from Yahoo Finance, plus any articles you add.\n"
+        "2. Splits them into passages and embeds them with Gemini into a FAISS index for your session.\n"
+        "3. Rewrites each question into standalone sub-questions, using the conversation so far.\n"
+        "4. Retrieves passages for each and has Gemini 2.5 Flash answer from those passages only."
+    )
+    st.markdown("**Built with**")
+    st.markdown("Python, Streamlit, LangChain, FAISS, Google Gemini and yfinance, "
+                "with an end-to-end pytest suite.")
+    st.markdown(f"[Source code on GitHub]({REPO_URL})")
+    st.caption("Built by Nitesh. Runs on Gemini's free tier, so large research sets take a minute "
+               "to build. Not investment advice.")
+
+# ======================
+# HEADER AND RESEARCH BAR
+# ======================
+vectorstore = st.session_state.get("vectorstore")
+
+st.markdown("### EquityBot")
+st.caption("Ask questions about a listed company. Answers come from live market data and recent news, "
+           f"with sources. [Source code]({REPO_URL})")
+
+ticker_col, build_col = st.columns([3, 1.4], vertical_alignment="bottom")
+ticker = ticker_col.text_input("Company ticker", key="ticker", placeholder="NVDA, AAPL or RELIANCE.NS",
+                               help="Any symbol on Yahoo Finance. Non-US listings need an exchange suffix.")
+build_clicked = build_col.button("Build research set", key="build", type="primary", width="stretch")
+build_clicked = build_clicked or st.session_state.pop("build_requested", False)
+
+examples_box = st.empty()
+if vectorstore is None:
+    with examples_box.container():
+        example_cols = st.columns([1.3] + [1] * len(EXAMPLE_TICKERS) + [2], vertical_alignment="center")
+        example_cols[0].caption("Or try an example")
+        for column, example in zip(example_cols[1:], EXAMPLE_TICKERS):
+            column.button(example, key=f"example_{example}", on_click=request_example, args=(example,),
+                          width="stretch")
+
+with st.expander("Add your own articles"):
+    include_news = st.toggle("Include the latest news for the ticker", value=True, key="include_news",
+                             help=f"Adds the {NUM_NEWS_ARTICLES} most relevant recent articles from Yahoo Finance.")
+    urls = [st.text_input(f"Article URL {i+1}", key=f"url_{i+1}", placeholder="https://")
             for i in range(NUM_URLS)]
-    build_clicked = st.button("Build research set", key="build", type="primary", use_container_width=True)
-
-    if st.session_state["messages"] and st.button("Clear chat", key="clear_chat", use_container_width=True):
-        st.session_state["messages"] = []
-
-# ======================
-# HEADER
-# ======================
-st.title("EquityBot")
-st.caption("Research a company from live market data and the latest coverage. "
-           "Every answer links to the passages it came from.")
 
 # ======================
 # BUILD RESEARCH SET
@@ -411,7 +453,8 @@ if build_clicked:
             d.metadata["source"]: (d.metadata.get("title") or "").strip() for d in documents
         }
         st.session_state["indexed_sources"] = list(st.session_state["source_titles"])
-        status.update(label=f"Research set ready · {len(st.session_state['indexed_sources'])} sources, "
+        examples_box.empty()
+        status.update(label=f"Research set ready: {len(st.session_state['indexed_sources'])} sources, "
                             f"{len(chunks)} passages", state="complete", expanded=False)
 
 # ======================
@@ -428,12 +471,15 @@ if vectorstore is not None:
     with st.expander(f"Sources in this research set ({len(sources)})"):
         for source in sources:
             st.markdown(f"- {source_link(source)}")
-else:
-    st.info("Enter a ticker or paste article URLs in the sidebar, then click **Build research set**.")
 
 # ======================
 # CHAT
 # ======================
+if st.session_state["messages"]:
+    _, clear_col = st.columns([5, 1])
+    if clear_col.button("Clear chat", key="clear_chat", type="tertiary", width="stretch"):
+        st.session_state["messages"] = []
+
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"], avatar=AVATARS[message["role"]]):
         st.markdown(message["content"])
@@ -450,7 +496,7 @@ if vectorstore is not None and not st.session_state["messages"] and not query:
     with suggestions_box.container():
         st.caption("Try asking")
         for i, (column, suggestion) in enumerate(zip(st.columns(3), suggested_questions(snapshot))):
-            if column.button(suggestion, key=f"suggestion_{i}", use_container_width=True):
+            if column.button(suggestion, key=f"suggestion_{i}", width="stretch"):
                 query = suggestion
     if query:
         suggestions_box.empty()

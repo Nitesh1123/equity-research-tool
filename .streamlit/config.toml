@@ -2,9 +2,23 @@
 toolbarMode = "minimal"
 
 [theme]
-base = "dark"
-primaryColor = "#3FB68B"
-backgroundColor = "#0F1318"
-secondaryBackgroundColor = "#171C23"
-textColor = "#E4E7EB"
-font = "sans serif"
+base = "light"
+primaryColor = "#1D4E89"
+backgroundColor = "#F5F6F8"
+secondaryBackgroundColor = "#E9ECF1"
+textColor = "#18212F"
+linkColor = "#1D4E89"
+borderColor = "#DDE1E7"
+showWidgetBorder = true
+baseRadius = "6px"
+greenColor = "#1E7F4F"
+redColor = "#B3261E"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+headingFontSizes = ["2.25rem", "1.5rem", "1.15rem", "1rem", "1rem", "1rem"]
+metricValueFontSize = "1.6rem"
+metricValueFontWeight = 600
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F6F8"

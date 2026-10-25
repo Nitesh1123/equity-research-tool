@@ -97,7 +97,24 @@ def ask(app, question):
 def test_chat_is_disabled_until_a_research_set_is_built():
     app = run_app()
     assert app.chat_input[0].disabled
-    assert "Build research set" in app.info[0].value
+    assert [app.button(key=f"example_{t}").label for t in ("NVDA", "AAPL", "MSFT")] == ["NVDA", "AAPL", "MSFT"]
+
+
+def test_sidebar_explains_the_project_and_links_the_code():
+    app = run_app()
+    sidebar_text = " ".join(m.value for m in app.sidebar.markdown)
+    assert "How it works" in sidebar_text
+    assert "https://github.com/Nitesh1123/equity-research-tool" in sidebar_text
+
+
+def test_example_ticker_builds_a_research_set_in_one_click():
+    app = run_app()
+    app.button(key="example_NVDA").click().run()
+    assert not app.exception, app.exception
+    assert app.text_input(key="ticker").value == "NVDA"
+    assert "vectorstore" in app.session_state
+    # Examples are only offered before the first research set
+    assert not [b for b in app.button if b.key and b.key.startswith("example_")]
 
 
 def test_requires_a_ticker_or_url():
@@ -120,9 +137,10 @@ def test_unknown_ticker_shows_a_clear_error():
 def test_ticker_shows_snapshot_and_indexes_relevant_news():
     app = build(run_app(), ticker="nvda")
 
+    assert app.title[0].value == "219.00"
     metrics = {m.label: m.value for m in app.metric}
-    assert metrics == {"Price (USD)": "219.00", "Market cap": "5.17T",
-                       "P/E (TTM)": "27.1", "52-week range": "164–243"}
+    assert metrics == {"Market cap": "5.17T", "P/E (TTM)": "27.1",
+                       "Forward P/E": "13.4", "52-week range": "164–243"}
 
     sources = app.session_state["indexed_sources"]
     assert sources[0] == "https://finance.yahoo.com/quote/NVDA"
